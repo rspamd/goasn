@@ -13,25 +13,32 @@ import (
 	"go.uber.org/zap"
 )
 
-func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]uint32, error) {
+func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]uint32, []string, int, error) {
+	mrtParseErrors := make([]string, 0)
+	mrtParseErrorCount := 0
 	prefixToAS := make(map[string]uint32)
 
 	bviewFile, err := sources.Basename(sources.BGP_LATEST)
 	if err != nil {
-		return prefixToAS, fmt.Errorf("couldn't get basename for URL: %v", err)
+		return prefixToAS, mrtParseErrors, mrtParseErrorCount,
+			fmt.Errorf("couldn't get basename for URL: %v", err)
 	}
 	bviewPath := filepath.Join(appCacheDir, bviewFile)
 	rdr, err := NewMRTReader(bviewPath)
 	if err != nil {
-		return prefixToAS, fmt.Errorf("failed to create MRT reader: %v", err)
+		return prefixToAS, mrtParseErrors, mrtParseErrorCount,
+			fmt.Errorf("failed to create MRT reader: %v", err)
 	}
 	defer rdr.Close()
 
-	log.Logger.Info("reading MRT file") // debug
+	mrtParseErrorMap := make(map[string]struct{})
+
+	log.Logger.Debug("reading MRT file")
 	for {
 		more, message, err := rdr.Next()
 		if err != nil {
-			log.Logger.Error("MRT parse error", zap.Error(err))
+			mrtParseErrorMap[err.Error()] = struct{}{}
+			mrtParseErrorCount++
 			if !more {
 				break
 			} else {
@@ -98,6 +105,9 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]ui
 			break
 		}
 	}
-	log.Logger.Info("read MRT file") // debug
-	return prefixToAS, nil
+	for k := range mrtParseErrorMap {
+		mrtParseErrors = append(mrtParseErrors, k)
+	}
+	log.Logger.Debug("read MRT file")
+	return prefixToAS, mrtParseErrors, mrtParseErrorCount, nil
 }

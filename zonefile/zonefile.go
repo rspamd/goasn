@@ -15,6 +15,8 @@ $NS  43200 asn-ns.rspamd.com asn-ns2.rspamd.com
 )
 
 func GenerateZone(asnToIRInfo map[uint32]ir.IRASNInfo, prefixToAS map[string]uint32, zonev4 string) error {
+	log.Logger.Debug("generating zone")
+	defer log.Logger.Debug("generated zone")
 
 	if zonev4 == "" {
 		log.Logger.Info("skipping v4 zone generation")
@@ -41,6 +43,5 @@ func GenerateZone(asnToIRInfo map[uint32]ir.IRASNInfo, prefixToAS map[string]uin
 	if err != nil {
 		return fmt.Errorf("error closing zonefile: %v", err)
 	}
-	log.Logger.Info("generated zone ostensibly") // debug
 	return nil
 }

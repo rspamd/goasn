@@ -78,7 +78,7 @@ func DownloadSource(ourDir string, resourceURL string) error {
 	}
 
 	if !wantDownload {
-		log.Logger.Info("no update needed", zap.String("url", resourceURL)) // debug
+		log.Logger.Debug("no update needed", zap.String("url", resourceURL))
 		return nil
 	}
 

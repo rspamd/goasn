@@ -59,9 +59,13 @@ func main() {
 		log.Logger.Fatal("failed to read IANA ASN info", zap.Error(err))
 	}
 
-	prefixToAS, err := mrt.ASNFromBGP(appCacheDir, ianaASN)
+	prefixToAS, parseErrs, parseErrCount, err := mrt.ASNFromBGP(appCacheDir, ianaASN)
 	if err != nil {
 		log.Logger.Fatal("failed to process MRT", zap.Error(err))
+	}
+	if parseErrCount > 0 {
+		log.Logger.Error("MRT parsing errors occurred",
+			zap.Int("count", parseErrCount), zap.Any("errors", parseErrs))
 	}
 
 	err = zonefile.GenerateZone(asnToIRInfo, prefixToAS, zoneV4)

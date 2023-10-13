@@ -5,7 +5,7 @@ import (
 )
 
 func TestSetupLogger(t *testing.T) {
-	err := SetupLogger()
+	err := SetupLogger(true)
 	if err != nil {
 		t.Fatal(err)
 	}
