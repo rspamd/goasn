@@ -42,9 +42,13 @@ func NewMRTReader(fileName string) (*MRTReader, error) {
 }
 
 func (m *MRTReader) Next() (bool, *mrt.MRTMessage, error) {
-	// XXX: for scanner.Scan
 	more := m.scanner.Scan()
 	b := m.scanner.Bytes()
+
+	if len(b) == 0 && !more {
+		return more, nil, nil
+	}
+
 	h := &mrt.MRTHeader{}
 	err := h.DecodeFromBytes(b)
 	if err != nil {

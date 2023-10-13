@@ -45,6 +45,9 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]ui
 				continue
 			}
 		}
+		if !more {
+			break
+		}
 		switch message.Header.Type {
 		case mrt.TABLE_DUMPv2:
 			switch message.Header.SubType {
