@@ -13,21 +13,34 @@ import (
 	"go.uber.org/zap"
 )
 
-func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]uint32, []string, int, error) {
-	mrtParseErrors := make([]string, 0)
-	mrtParseErrorCount := 0
-	prefixToAS := make(map[string]uint32)
+type BGPASNInfo struct {
+	Err             error
+	ParseErrors     []string
+	ParseErrorCount int
+	V4              map[string]uint32
+	V6              map[string]uint32
+}
+
+func NewBGPASNInfo() *BGPASNInfo {
+	return &BGPASNInfo{
+		V4: make(map[string]uint32),
+		V6: make(map[string]uint32),
+	}
+}
+
+func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) *BGPASNInfo {
+	res := NewBGPASNInfo()
 
 	bviewFile, err := sources.Basename(sources.BGP_LATEST)
 	if err != nil {
-		return prefixToAS, mrtParseErrors, mrtParseErrorCount,
-			fmt.Errorf("couldn't get basename for URL: %v", err)
+		res.Err = fmt.Errorf("couldn't get basename for URL: %v", err)
+		return res
 	}
 	bviewPath := filepath.Join(appCacheDir, bviewFile)
 	rdr, err := NewMRTReader(bviewPath)
 	if err != nil {
-		return prefixToAS, mrtParseErrors, mrtParseErrorCount,
-			fmt.Errorf("failed to create MRT reader: %v", err)
+		res.Err = fmt.Errorf("failed to create MRT reader: %v", err)
+		return res
 	}
 	defer rdr.Close()
 
@@ -38,7 +51,7 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]ui
 		more, message, err := rdr.Next()
 		if err != nil {
 			mrtParseErrorMap[err.Error()] = struct{}{}
-			mrtParseErrorCount++
+			res.ParseErrorCount++
 			if !more {
 				break
 			} else {
@@ -48,11 +61,15 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]ui
 		if !more {
 			break
 		}
+		prefixToAS := res.V4
 		switch message.Header.Type {
 		case mrt.TABLE_DUMPv2:
 			switch message.Header.SubType {
 			case uint16(mrt.PEER_INDEX_TABLE):
 				// FIXME: anything useful to be done with this?
+			case uint16(mrt.RIB_IPV6_UNICAST):
+				prefixToAS = res.V6
+				fallthrough
 			case uint16(mrt.RIB_IPV4_UNICAST):
 				ribMessage := message.Body.(*mrt.Rib)
 				prefix := ribMessage.Prefix.String()
@@ -94,8 +111,6 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]ui
 						}
 					}
 				}
-			case uint16(mrt.RIB_IPV6_UNICAST):
-				// FIXME: IP6
 			default:
 				log.Logger.Warn("table dump subtype was not handled",
 					zap.Uint16("subtype", uint16(message.Header.SubType)))
@@ -109,8 +124,8 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) (map[string]ui
 		}
 	}
 	for k := range mrtParseErrorMap {
-		mrtParseErrors = append(mrtParseErrors, k)
+		res.ParseErrors = append(res.ParseErrors, k)
 	}
 	log.Logger.Debug("read MRT file")
-	return prefixToAS, mrtParseErrors, mrtParseErrorCount, nil
+	return res
 }

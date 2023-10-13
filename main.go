@@ -22,6 +22,7 @@ var (
 	downloadASN bool
 	downloadBGP bool
 	zoneV4      string
+	zoneV6      string
 )
 
 func main() {
@@ -59,16 +60,17 @@ func main() {
 		log.Logger.Fatal("failed to read IANA ASN info", zap.Error(err))
 	}
 
-	prefixToAS, parseErrs, parseErrCount, err := mrt.ASNFromBGP(appCacheDir, ianaASN)
-	if err != nil {
-		log.Logger.Fatal("failed to process MRT", zap.Error(err))
+	bgpInfo := mrt.ASNFromBGP(appCacheDir, ianaASN)
+	if bgpInfo.Err != nil {
+		log.Logger.Fatal("failed to process MRT", zap.Error(bgpInfo.Err))
 	}
-	if parseErrCount > 0 {
+	if bgpInfo.ParseErrorCount > 0 {
 		log.Logger.Error("MRT parsing errors occurred",
-			zap.Int("count", parseErrCount), zap.Any("errors", parseErrs))
+			zap.Int("count", bgpInfo.ParseErrorCount),
+			zap.Any("errors", bgpInfo.ParseErrors))
 	}
 
-	err = zonefile.GenerateZone(asnToIRInfo, prefixToAS, zoneV4)
+	err = zonefile.GenerateZones(asnToIRInfo, bgpInfo.V4, zoneV4, bgpInfo.V6, zoneV6)
 	if err != nil {
 		log.Logger.Fatal("failed to generate zone", zap.Error(err))
 	}
@@ -79,6 +81,7 @@ func init() {
 	flag.BoolVar(&downloadASN, "download-asn", false, "download RIR data")
 	flag.BoolVar(&downloadBGP, "download-bgp", false, "download MRT data")
 	flag.StringVar(&zoneV4, "file-v4", "", "path to V4 zonefile")
+	flag.StringVar(&zoneV6, "file-v6", "", "path to V6 zonefile")
 	flag.Parse()
 
 	err := log.SetupLogger(debug)
