@@ -56,6 +56,9 @@ func ReadIRData(appCacheDir string, sources []string) (map[uint32]IRASNInfo, err
 			}
 
 			if entType == "asn" {
+				if entCountry == "" {
+					entCountry = "--"
+				}
 				irInfo := &IRASNInfo{
 					Country: entCountry,
 					IR:      IRID(entIR),
