@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	APP_NAME = "asn"
+	APP_NAME = "goasn"
 )
 
 var (
+	debug       bool
 	downloadASN bool
 	downloadBGP bool
 	zoneV4      string
@@ -70,13 +71,14 @@ func main() {
 }
 
 func init() {
-	err := log.SetupLogger()
-	if err != nil {
-		panic(err)
-	}
-
+	flag.BoolVar(&debug, "debug", false, "enable debug logging")
 	flag.BoolVar(&downloadASN, "download-asn", false, "download RIR data")
 	flag.BoolVar(&downloadBGP, "download-bgp", false, "download MRT data")
 	flag.StringVar(&zoneV4, "file-v4", "", "path to V4 zonefile")
 	flag.Parse()
+
+	err := log.SetupLogger(debug)
+	if err != nil {
+		panic(err)
+	}
 }

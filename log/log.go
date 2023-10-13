@@ -9,9 +9,11 @@ var (
 	Logger *zap.Logger
 )
 
-func SetupLogger() error {
-	config := zap.NewDevelopmentConfig()
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+func SetupLogger(debug bool) error {
+	config := zap.NewProductionConfig()
+	if debug {
+		config.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+	}
 	var err error
 	Logger, err = config.Build()
 	return err
