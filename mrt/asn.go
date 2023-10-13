@@ -73,7 +73,7 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) *BGPASNInfo {
 			case uint16(mrt.RIB_IPV4_UNICAST):
 				ribMessage := message.Body.(*mrt.Rib)
 				prefix := ribMessage.Prefix.String()
-				if prefix == "0.0.0.0/0" {
+				if prefix == "0.0.0.0/0" || prefix == "::/0" {
 					continue
 				}
 				for _, entry := range ribMessage.Entries {
