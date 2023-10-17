@@ -21,6 +21,7 @@ var (
 	debug       bool
 	downloadASN bool
 	downloadBGP bool
+	rejectFile  string
 	zoneV4      string
 	zoneV6      string
 )
@@ -60,7 +61,7 @@ func main() {
 		log.Logger.Fatal("failed to read IANA ASN info", zap.Error(err))
 	}
 
-	bgpInfo := mrt.ASNFromBGP(appCacheDir, ianaASN)
+	bgpInfo := mrt.ASNFromBGP(appCacheDir, ianaASN, rejectFile)
 	if bgpInfo.Err != nil {
 		log.Logger.Fatal("failed to process MRT", zap.Error(bgpInfo.Err))
 	}
@@ -80,6 +81,7 @@ func init() {
 	flag.BoolVar(&debug, "debug", false, "enable debug logging")
 	flag.BoolVar(&downloadASN, "download-asn", false, "download RIR data")
 	flag.BoolVar(&downloadBGP, "download-bgp", false, "download MRT data")
+	flag.StringVar(&rejectFile, "reject", "", "path to write unparseable entries to")
 	flag.StringVar(&zoneV4, "file-v4", "", "path to V4 zonefile")
 	flag.StringVar(&zoneV6, "file-v6", "", "path to V6 zonefile")
 	flag.Parse()

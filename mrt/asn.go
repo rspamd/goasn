@@ -28,7 +28,7 @@ func NewBGPASNInfo() *BGPASNInfo {
 	}
 }
 
-func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) *BGPASNInfo {
+func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile string) *BGPASNInfo {
 	res := NewBGPASNInfo()
 
 	bviewFile, err := sources.Basename(sources.BGP_LATEST)
@@ -37,7 +37,7 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID) *BGPASNInfo {
 		return res
 	}
 	bviewPath := filepath.Join(appCacheDir, bviewFile)
-	rdr, err := NewMRTReader(bviewPath)
+	rdr, err := NewMRTReader(bviewPath, rejectFile)
 	if err != nil {
 		res.Err = fmt.Errorf("failed to create MRT reader: %v", err)
 		return res
