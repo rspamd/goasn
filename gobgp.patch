@@ -1,0 +1,32 @@
+diff --git a/vendor/github.com/osrg/gobgp/v3/pkg/packet/bgp/bgp.go b/vendor/github.com/osrg/gobgp/v3/pkg/packet/bgp/bgp.go
+index 6a00b551..3ea86078 100644
+--- a/vendor/github.com/osrg/gobgp/v3/pkg/packet/bgp/bgp.go
++++ b/vendor/github.com/osrg/gobgp/v3/pkg/packet/bgp/bgp.go
+@@ -12713,11 +12713,25 @@ func ParseExtended(data []byte) (ExtendedCommunityInterface, error) {
+ 	case EC_TYPE_NON_TRANSITIVE_OPAQUE:
+ 		return parseOpaqueExtended(data)
+ 	case EC_TYPE_EVPN:
+-		return parseEvpnExtended(data)
++		res, err := parseEvpnExtended(data)
++		if err != nil {
++			return &UnknownExtended{
++				Type:  ExtendedCommunityAttrType(data[0]),
++				Value: data[1:8],
++			}, nil
++		}
++		return res, nil
+ 	case EC_TYPE_GENERIC_TRANSITIVE_EXPERIMENTAL, EC_TYPE_GENERIC_TRANSITIVE_EXPERIMENTAL2, EC_TYPE_GENERIC_TRANSITIVE_EXPERIMENTAL3:
+ 		return parseGenericTransitiveExperimentalExtended(data)
+ 	case EC_TYPE_MUP:
+-		return parseMUPExtended(data)
++		res, err := parseMUPExtended(data)
++		if err != nil {
++			return &UnknownExtended{
++				Type:  ExtendedCommunityAttrType(data[0]),
++				Value: data[1:8],
++			}, nil
++		}
++		return res, nil
+ 	default:
+ 		return &UnknownExtended{
+ 			Type:  ExtendedCommunityAttrType(data[0]),
