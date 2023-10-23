@@ -13,17 +13,33 @@ func Basename(urlStr string) (string, error) {
 	return path.Base(u.Path), nil
 }
 
+func MustBasename(urlStr string) string {
+	res, err := Basename(urlStr)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
 func Basenames(urlList []string) ([]string, error) {
 
 	baseNames := make([]string, len(urlList))
 
 	for i, resourceURL := range urlList {
-		u, err := url.Parse(resourceURL)
+		b, err := Basename(resourceURL)
 		if err != nil {
 			return baseNames, err
 		}
-		baseNames[i] = path.Base(u.Path)
+		baseNames[i] = b
 	}
 
 	return baseNames, nil
+}
+
+func MustBasenames(urlList []string) []string {
+	res, err := Basenames(urlList)
+	if err != nil {
+		panic(err)
+	}
+	return res
 }

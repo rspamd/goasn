@@ -32,6 +32,7 @@ func lastModFromHeaders(hdrs http.Header, resourceURL string) (t time.Time, err 
 }
 
 func CheckUpdate(resourceURL string, fileModTime time.Time) (bool, error) {
+	log.Logger.Debug("checking for update", zap.String("url", resourceURL))
 	req, err := http.NewRequest("HEAD", resourceURL, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare HEAD request to %s: %v", resourceURL, err)
@@ -48,8 +49,12 @@ func CheckUpdate(resourceURL string, fileModTime time.Time) (bool, error) {
 		return false, err
 	}
 	if !t.After(fileModTime) {
+		log.Logger.Debug("no update needed", zap.String("url", resourceURL),
+			zap.Time("urlTime", t), zap.Time("fileTime", fileModTime))
 		return false, nil
 	}
+	log.Logger.Debug("found update", zap.String("url", resourceURL),
+		zap.Time("urlTime", t), zap.Time("fileTime", fileModTime))
 	return true, nil
 }
 
@@ -78,10 +83,10 @@ func DownloadSource(ourDir string, resourceURL string) error {
 	}
 
 	if !wantDownload {
-		log.Logger.Debug("no update needed", zap.String("url", resourceURL))
 		return nil
 	}
 
+	log.Logger.Debug("downloading", zap.String("url", resourceURL))
 	req, err := http.NewRequest("GET", resourceURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to prepare GET request to %s: %v", resourceURL, err)
@@ -130,5 +135,6 @@ func DownloadSource(ourDir string, resourceURL string) error {
 	if err != nil {
 		return fmt.Errorf("failed to rename %s to %s: %v", swapPath, fPath, err)
 	}
+	log.Logger.Debug("downloaded", zap.String("url", resourceURL))
 	return nil
 }

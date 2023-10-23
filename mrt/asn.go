@@ -31,11 +31,7 @@ func NewBGPASNInfo() *BGPASNInfo {
 func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile string) *BGPASNInfo {
 	res := NewBGPASNInfo()
 
-	bviewFile, err := sources.Basename(sources.BGP_LATEST)
-	if err != nil {
-		res.Err = fmt.Errorf("couldn't get basename for URL: %v", err)
-		return res
-	}
+	bviewFile := sources.MustBasename(sources.BGP_LATEST)
 	bviewPath := filepath.Join(appCacheDir, bviewFile)
 	rdr, err := NewMRTReader(bviewPath, rejectFile)
 	if err != nil {
@@ -66,7 +62,7 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile str
 		case mrt.TABLE_DUMPv2:
 			switch message.Header.SubType {
 			case uint16(mrt.PEER_INDEX_TABLE):
-				// FIXME: anything useful to be done with this?
+				// not directly interesting
 			case uint16(mrt.RIB_IPV6_UNICAST):
 				prefixToAS = res.V6
 				fallthrough
@@ -92,7 +88,7 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile str
 							for lastIdx >= 0 {
 								originAS = asList[lastIdx]
 								ianaAllocation := ianaASN(originAS)
-								// IANA XML's UNALLOCATED status appears to be nonsense
+								// XXX: IANA XML's UNALLOCATED status appears to be nonsense?
 								if ianaAllocation == ir.UNKNOWN || ianaAllocation == ir.RESERVED {
 									lastIdx = lastIdx - 1
 								} else {
