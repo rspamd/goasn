@@ -5,9 +5,9 @@ import (
 )
 
 func TestSetupLogger(t *testing.T) {
-	err := SetupLogger(true)
+	err := SetupLogger(false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	Logger.Info("hello world")
+	Logger.Debug("hello world")
 }

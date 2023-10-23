@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/rspamd/goasn/cachedir"
+	"github.com/rspamd/goasn/download"
 	"github.com/rspamd/goasn/iana"
 	"github.com/rspamd/goasn/ir"
 	"github.com/rspamd/goasn/log"
@@ -42,15 +43,11 @@ func main() {
 		toRefresh = append(toRefresh, sources.BGP_LATEST)
 	}
 
-	if !sources.RefreshSources(appCacheDir, toRefresh) {
+	if !download.RefreshSources(appCacheDir, toRefresh) {
 		log.Logger.Warn("some sources failed to download")
 	}
 
-	IRDataFiles, err := sources.Basenames(sources.GetRIRASN())
-	if err != nil {
-		log.Logger.Fatal("failed to get basename for URL", zap.Error(err))
-	}
-
+	IRDataFiles := sources.MustBasenames(sources.GetRIRASN())
 	asnToIRInfo, err := ir.ReadIRData(appCacheDir, IRDataFiles)
 	if err != nil {
 		log.Logger.Fatal("failed to read ASN info", zap.Error(err))

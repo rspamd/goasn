@@ -1,0 +1,16 @@
+---
+kind: pipeline
+type: docker
+name: default
+
+steps:
+- name: test
+  image: golang
+  commands:
+  - go test -cover ./...
+  - go install honnef.co/go/tools/cmd/staticcheck@latest
+  - "`go env GOPATH`/bin/staticcheck ./..."
+---
+hmac: "d92fa1e507008496f80c6448da694cbd14d37cc93716820061c4a133fe88ca56"
+kind: signature
+...

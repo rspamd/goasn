@@ -2,7 +2,6 @@ package iana
 
 import (
 	"encoding/xml"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,8 +12,9 @@ import (
 )
 
 type IANAASNRecord struct {
-	Number      string `xml:"number"`
-	Description string `xml:"description"`
+	Number      string   `xml:"number"`
+	Description string   `xml:"description"`
+	Xref        IANAXref `xml:"xref"`
 	lowN        uint32
 	highN       uint32
 	ir          ir.IRID
@@ -26,6 +26,11 @@ type IANAASNRegistry struct {
 
 type IANAASNInfo struct {
 	Registries []IANAASNRegistry `xml:"registry"`
+}
+
+type IANAXref struct {
+	Type string `xml:"type"`
+	Data string `xml:"data"`
 }
 
 func ReadIANAASN(appCacheDir string) (func(uint32) ir.IRID, error) {
@@ -41,12 +46,7 @@ func ReadIANAASN(appCacheDir string) (func(uint32) ir.IRID, error) {
 		return ir.UNKNOWN
 	}
 
-	ianaASNFile, err := sources.Basename(sources.IANA_ASN)
-	if err != nil {
-		return ianaInfo, fmt.Errorf("couldn't find basename for URL(%s): %v",
-			sources.IANA_ASN, err)
-	}
-
+	ianaASNFile := sources.MustBasename(sources.IANA_ASN)
 	xmlPath := filepath.Join(appCacheDir, ianaASNFile)
 	f, err := os.Open(xmlPath)
 	if err != nil {
@@ -74,7 +74,15 @@ func ReadIANAASN(appCacheDir string) (func(uint32) ir.IRID, error) {
 				rec.ir = ir.LACNIC
 			case "Assigned by RIPE NCC":
 				rec.ir = ir.RIPE
+			case "AS_TRANS":
+				fallthrough
 			case "Reserved":
+				fallthrough
+			case "Reserved for Private Use":
+				fallthrough
+			case "Reserved for use in documentation and sample code":
+				fallthrough
+			case "See Sub-registry 16-bit AS numbers":
 				rec.ir = ir.RESERVED
 			case "Unallocated":
 				rec.ir = ir.UNALLOCATED
@@ -101,6 +109,12 @@ func ReadIANAASN(appCacheDir string) (func(uint32) ir.IRID, error) {
 				}
 				rec.lowN = uint32(lowN)
 				rec.highN = uint32(highN)
+				// special case: reserved range is not the indicated range
+				if rec.Xref.Data == "rfc1930" {
+					if highN == 65535 && lowN == 0 {
+						rec.lowN = uint32(64512)
+					}
+				}
 			}
 			reg.Records[i] = rec
 
