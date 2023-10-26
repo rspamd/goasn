@@ -3,6 +3,7 @@ package zonefile
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/rspamd/goasn/ir"
 	"github.com/rspamd/goasn/log"
@@ -49,7 +50,15 @@ func GenerateZone(asnToIRInfo map[uint32]ir.IRASNInfo, prefixToAS map[string]uin
 		IR:      ir.UNKNOWN,
 		Country: "--", // FIXME: types
 	}
-	for prefix, asnNo := range prefixToAS {
+	sortedKeys := make([]string, len(prefixToAS))
+	i := 0
+	for prefix := range prefixToAS {
+		sortedKeys[i] = prefix
+		i++
+	}
+	slices.Sort(sortedKeys)
+	for _, prefix := range sortedKeys {
+		asnNo := prefixToAS[prefix]
 		irInfo, ok := asnToIRInfo[asnNo]
 		if !ok {
 			irInfo = emptyInfo
