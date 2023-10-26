@@ -8,16 +8,22 @@ const (
 	LACNIC_ASN  = "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-latest"
 	RIPE_ASN    = "https://ftp.ripe.net/ripe/stats/delegated-ripencc-latest"
 	IANA_ASN    = "https://www.iana.org/assignments/as-numbers/as-numbers.xml"
+	IANA_IP4    = "https://www.iana.org/assignments/ipv4-address-space/ipv4-address-space.xml"
+	IANA_IP6    = "https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xml"
 )
 
 func GetAllSources() []string {
 	allSources := append(GetRIRASN(), BGP_LATEST)
-	allSources = append(allSources, IANA_ASN)
+	allSources = append(allSources, GetIANASources()...)
 	return allSources
 }
 
+func GetIANASources() []string {
+	return []string{IANA_ASN, IANA_IP4, IANA_IP6}
+}
+
 func GetASNSources() []string {
-	return append(GetRIRASN(), IANA_ASN)
+	return append(GetRIRASN(), GetIANASources()...)
 }
 
 func GetRIRASN() []string {

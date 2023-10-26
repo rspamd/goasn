@@ -14,6 +14,8 @@ var (
 		"delegated-ripencc-latest",
 		"latest-bview.gz",
 		"as-numbers.xml",
+		"ipv4-address-space.xml",
+		"ipv6-address-space.xml",
 	}
 )
 
