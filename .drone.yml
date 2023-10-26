@@ -10,7 +10,13 @@ steps:
   - go test -cover ./...
   - go install honnef.co/go/tools/cmd/staticcheck@latest
   - "`go env GOPATH`/bin/staticcheck ./..."
+
+trigger:
+  event:
+    include:
+      - push
+      - pull_request
 ---
-hmac: "d92fa1e507008496f80c6448da694cbd14d37cc93716820061c4a133fe88ca56"
+hmac: "3578aa331afc59fb761a53431e3886221fae525ada6b31ddcba805d81bb73236"
 kind: signature
 ...
