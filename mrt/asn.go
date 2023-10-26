@@ -8,6 +8,7 @@ import (
 	"github.com/rspamd/goasn/log"
 	"github.com/rspamd/goasn/sources"
 
+	"github.com/asergeyev/nradix"
 	"github.com/osrg/gobgp/v3/pkg/packet/bgp"
 	"github.com/osrg/gobgp/v3/pkg/packet/mrt"
 	"go.uber.org/zap"
@@ -28,7 +29,7 @@ func NewBGPASNInfo() *BGPASNInfo {
 	}
 }
 
-func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile string) *BGPASNInfo {
+func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile string, reserved4 *nradix.Tree, reserved6 *nradix.Tree) *BGPASNInfo {
 	res := NewBGPASNInfo()
 
 	bviewFile := sources.MustBasename(sources.BGP_LATEST)
@@ -58,6 +59,7 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile str
 			break
 		}
 		prefixToAS := res.V4
+		reservedIP := reserved4
 		switch message.Header.Type {
 		case mrt.TABLE_DUMPv2:
 			switch message.Header.SubType {
@@ -65,11 +67,16 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile str
 				// not directly interesting
 			case uint16(mrt.RIB_IPV6_UNICAST):
 				prefixToAS = res.V6
+				reservedIP = reserved6
 				fallthrough
 			case uint16(mrt.RIB_IPV4_UNICAST):
 				ribMessage := message.Body.(*mrt.Rib)
 				prefix := ribMessage.Prefix.String()
-				if prefix == "0.0.0.0/0" || prefix == "::/0" {
+				inf, err := reservedIP.FindCIDR(prefix)
+				if err != nil {
+					log.Logger.Error("radix lookup failed", zap.Error(err))
+				} else if inf != nil {
+					log.Logger.Debug("ignoring reserved range", zap.String("range", prefix))
 					continue
 				}
 				for _, entry := range ribMessage.Entries {

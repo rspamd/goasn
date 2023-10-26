@@ -10,6 +10,7 @@ import (
 	"github.com/rspamd/goasn/sources"
 	"github.com/rspamd/goasn/zonefile"
 
+	"github.com/asergeyev/nradix"
 	flag "github.com/spf13/pflag"
 	"go.uber.org/zap"
 )
@@ -58,7 +59,30 @@ func main() {
 		log.Logger.Fatal("failed to read IANA ASN info", zap.Error(err))
 	}
 
-	bgpInfo := mrt.ASNFromBGP(appCacheDir, ianaASN, rejectFile)
+	var reservedV4 *nradix.Tree
+	var reservedV6 *nradix.Tree
+
+	if zoneV4 != "" {
+		var err error
+		reservedV4, err = iana.GetReservedIP4(appCacheDir)
+		if err != nil {
+			log.Logger.Fatal("failed to read IANA IP4 info", zap.Error(err))
+		}
+	} else {
+		reservedV4 = nradix.NewTree(0)
+	}
+
+	if zoneV6 != "" {
+		var err error
+		reservedV6, err = iana.GetReservedIP6(appCacheDir)
+		if err != nil {
+			log.Logger.Fatal("failed to read IANA IP6 info", zap.Error(err))
+		}
+	} else {
+		reservedV6 = nradix.NewTree(0)
+	}
+
+	bgpInfo := mrt.ASNFromBGP(appCacheDir, ianaASN, rejectFile, reservedV4, reservedV6)
 	if bgpInfo.Err != nil {
 		log.Logger.Fatal("failed to process MRT", zap.Error(bgpInfo.Err))
 	}
