@@ -78,6 +78,9 @@ func ASNFromBGP(appCacheDir string, ianaASN func(uint32) ir.IRID, rejectFile str
 				} else if inf != nil {
 					log.Logger.Debug("ignoring reserved range", zap.String("range", prefix))
 					continue
+				} else if prefix == "0.0.0.0/0" || prefix == "::/0" {
+					log.Logger.Debug("ignoring null route", zap.String("range", prefix))
+					continue
 				}
 				for _, entry := range ribMessage.Entries {
 					for _, pa := range entry.PathAttributes {
