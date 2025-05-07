@@ -3,7 +3,7 @@ FROM golang:1.21-alpine AS builder
 RUN apk add --no-cache patch gcc musl-dev
 
 WORKDIR /build
-COPY ./goasn .
+COPY . .
 
 RUN go mod vendor
 RUN patch -u -p1 -i gobgp.patch
