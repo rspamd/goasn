@@ -8,22 +8,36 @@ import (
 	"github.com/rspamd/goasn/log"
 )
 
-func RefreshSources(appCacheDir string, sources []string) bool {
+type RefreshResult struct {
+	AnyUpdated   bool
+	AnyError     bool
+	ErrorCount   int
+	UpdatedCount int
+}
+
+func RefreshSources(appCacheDir string, sources []string) RefreshResult {
 	var wg sync.WaitGroup
-	allGood := true
+	var mu sync.Mutex
+	result := RefreshResult{}
 
 	for _, url := range sources {
 		wg.Add(1)
 		go func(url string) {
 			defer wg.Done()
 			err := DownloadSource(appCacheDir, url)
+			mu.Lock()
 			if err != nil {
 				log.Logger.Error("failed to get update",
 					zap.String("url", url), zap.Error(err))
-				allGood = false
+				result.AnyError = true
+				result.ErrorCount++
+			} else {
+				result.AnyUpdated = true
+				result.UpdatedCount++
 			}
+			mu.Unlock()
 		}(url)
 	}
 	wg.Wait()
-	return allGood
+	return result
 }
