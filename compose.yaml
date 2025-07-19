@@ -1,0 +1,9 @@
+services:
+  goasn:
+    container_name: goasn
+    restart: "no"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/goasn
