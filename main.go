@@ -1,6 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/rspamd/goasn/cachedir"
 	"github.com/rspamd/goasn/download"
 	"github.com/rspamd/goasn/iana"
@@ -9,8 +13,6 @@ import (
 	"github.com/rspamd/goasn/mrt"
 	"github.com/rspamd/goasn/sources"
 	"github.com/rspamd/goasn/zonefile"
-
-	"os"
 
 	"github.com/asergeyev/nradix"
 	flag "github.com/spf13/pflag"
@@ -36,6 +38,7 @@ var (
 func main() {
 	var appCacheDir string
 	var err error
+	log.Logger.Info("goasn application started")
 	if cacheDir != "" {
 		// Create the directory if it doesn't exist
 		err = os.MkdirAll(cacheDir, 0o755)
@@ -52,6 +55,34 @@ func main() {
 		}
 	}
 
+	// Ensure zone file directories exist and are writable
+	for _, zonePath := range []string{zoneV4, zoneV6} {
+		if zonePath == "" {
+			continue
+		}
+		dir := filepath.Dir(zonePath)
+		err := os.MkdirAll(dir, 0o755)
+		if err != nil {
+			log.Logger.Fatal("failed to create zone file directory",
+				zap.String("dir", dir), zap.Error(err))
+		}
+		tmpFile := zonePath + zoneTmpExt
+		f, err := os.Create(tmpFile)
+		if err != nil {
+			log.Logger.Fatal("failed to create temp zone file",
+				zap.String("file", tmpFile), zap.Error(err))
+		}
+		_, err = f.Write([]byte("test"))
+		if err != nil {
+			f.Close()
+			os.Remove(tmpFile)
+			log.Logger.Fatal("failed to write to temp zone file",
+				zap.String("file", tmpFile), zap.Error(err))
+		}
+		f.Close()
+		os.Remove(tmpFile)
+	}
+
 	toRefresh := make([]string, 0)
 	if downloadASN {
 		toRefresh = append(toRefresh, sources.GetASNSources()...)
@@ -62,16 +93,45 @@ func main() {
 
 	result := download.RefreshSources(appCacheDir, toRefresh)
 	if result.AnyError {
-		log.Logger.Warn("some sources failed to download", zap.Int("error_count", result.ErrorCount))
+		log.Logger.Warn("failed to download sources", zap.Int("error_count", result.ErrorCount))
 	} else if !result.AnyUpdated {
-		log.Logger.Info("all sources up to date, nothing downloaded")
+		log.Logger.Info("all sources up to date")
 	}
 
-	if onUpdateOnly && !result.AnyUpdated {
-		log.Logger.Info("skipping zone file generation")
-		return
+	if result.AnyUpdated {
+		log.Logger.Info("sources succesfully updated", zap.Int("updated_count", result.UpdatedCount))
 	}
 
+	if (zoneV4 != "" || zoneV6 != "") && onUpdateOnly && !result.AnyUpdated {
+		skip := true
+		for _, zonePath := range []string{zoneV4, zoneV6} {
+			if zonePath == "" {
+				continue
+			}
+			f, err := os.Open(zonePath)
+			if err != nil {
+				skip = false
+				break
+			}
+			buf := make([]byte, 4096)
+			n, _ := f.Read(buf)
+			f.Close()
+			content := string(buf[:n])
+			lines := strings.Split(content, "\n")
+			if len(lines) < 2 ||
+				!strings.HasPrefix(lines[0], "$SOA ") ||
+				!strings.HasPrefix(lines[1], "$NS ") {
+				skip = false
+				break
+			}
+		}
+		if skip {
+			log.Logger.Info("skipping zone file generation")
+			return
+		}
+	}
+
+	log.Logger.Info("starting zone file generation")
 	IRDataFiles := sources.MustBasenames(sources.GetRIRASN())
 	asnToIRInfo, err := ir.ReadIRData(appCacheDir, IRDataFiles)
 	if err != nil {
@@ -139,12 +199,16 @@ func main() {
 		err = download.MoveFile(tmpZoneV4, zoneV4)
 		if err != nil {
 			log.Logger.Fatal("failed to move V4 zone file", zap.Error(err))
+		} else {
+			log.Logger.Info("finished writing V4 zone file", zap.String("file", zoneV4))
 		}
 	}
 	if zoneV6 != "" {
 		err = download.MoveFile(tmpZoneV6, zoneV6)
 		if err != nil {
 			log.Logger.Fatal("failed to move V6 zone file", zap.Error(err))
+		} else {
+			log.Logger.Info("finished writing V6 zone file", zap.String("file", zoneV6))
 		}
 	}
 }
