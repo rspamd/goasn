@@ -36,14 +36,6 @@ var (
 	cacheDir     string
 )
 
-func cleanupTempFiles(files ...string) {
-	for _, f := range files {
-		if f != "" {
-			os.Remove(f)
-		}
-	}
-}
-
 func main() {
 	var appCacheDir string
 	var err error
@@ -210,16 +202,23 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
-		cleanupTempFiles(tmpZoneV4, tmpZoneV6)
+		if tmpV4Created {
+			os.Remove(tmpZoneV4)
+		}
+		if tmpV6Created {
+			os.Remove(tmpZoneV6)
+		}
 		os.Exit(1)
 	}()
 
 	defer func() {
 		if tmpV4Created {
 			os.Remove(tmpZoneV4)
+			tmpV4Created = false
 		}
 		if tmpV6Created {
 			os.Remove(tmpZoneV6)
+			tmpV6Created = false
 		}
 	}()
 
