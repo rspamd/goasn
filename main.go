@@ -67,8 +67,7 @@ func main() {
 		}
 		tmpFile, err := os.CreateTemp(dir, ".goasn_check_*")
 		if err != nil {
-			log.Logger.Fatal("failed to create temp zone file",
-				zap.String("file", tmpFile.Name()), zap.Error(err))
+			log.Logger.Fatal("failed to create temp zone file", zap.Error(err))
 		}
 		_, err = tmpFile.Write([]byte("test"))
 		if err != nil {
