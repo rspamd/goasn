@@ -196,7 +196,7 @@ func main() {
 
 	// Atomically move files from temp to destination
 	if zoneV4 != "" {
-		err = download.MoveFile(tmpZoneV4, zoneV4)
+		err = os.Rename(tmpZoneV4, zoneV4)
 		if err != nil {
 			log.Logger.Fatal("failed to move V4 zone file", zap.Error(err))
 		} else {
@@ -204,7 +204,7 @@ func main() {
 		}
 	}
 	if zoneV6 != "" {
-		err = download.MoveFile(tmpZoneV6, zoneV6)
+		err = os.Rename(tmpZoneV6, zoneV6)
 		if err != nil {
 			log.Logger.Fatal("failed to move V6 zone file", zap.Error(err))
 		} else {

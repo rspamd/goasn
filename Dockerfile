@@ -13,11 +13,17 @@ FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata
 
+RUN update-ca-certificates
+
+RUN addgroup -g 1001 -S goasn && adduser -u 1001 -S goasn -G goasn
+
 COPY --from=builder /build/goasn /usr/local/bin/goasn
 
-RUN mkdir -p /goasn
+RUN mkdir -p /goasn && chown goasn:goasn /goasn
 
 WORKDIR /goasn
+
+USER goasn
 
 ENTRYPOINT ["goasn"]
 
