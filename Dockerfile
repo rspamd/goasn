@@ -27,6 +27,6 @@ USER goasn
 
 ENTRYPOINT ["goasn"]
 
-CMD ["--cache-dir","/goasn/cache","--download-bgp","--download-asn","--on-update-only","--file-v4","/goasn/zones/asn.rspamd.com_ip4trie","--file-v6","/goasn/zones/asn6.rspamd.com_ip6trie","--zone-tmp-ext","__tmp"]
+CMD ["--cache-dir","/goasn/cache","--download-bgp","--download-asn","--on-update-only","--file-v4","/goasn/zones/asn.rspamd.com_ip4trie","--file-v6","/goasn/zones/asn6.rspamd.com_ip6trie"]
 
 VOLUME ["/goasn"]

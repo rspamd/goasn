@@ -32,7 +32,6 @@ var (
 	zoneV4       string
 	zoneV6       string
 	cacheDir     string
-	zoneTmpExt   string
 )
 
 func main() {
@@ -63,24 +62,23 @@ func main() {
 		dir := filepath.Dir(zonePath)
 		err := os.MkdirAll(dir, 0o755)
 		if err != nil {
-			log.Logger.Fatal("failed to create zone file directory",
+			log.Logger.Fatal("failed to create zone directory",
 				zap.String("dir", dir), zap.Error(err))
 		}
-		tmpFile := zonePath + zoneTmpExt
-		f, err := os.Create(tmpFile)
+		tmpFile, err := os.CreateTemp(dir, ".goasn_check_*")
 		if err != nil {
 			log.Logger.Fatal("failed to create temp zone file",
-				zap.String("file", tmpFile), zap.Error(err))
+				zap.String("file", tmpFile.Name()), zap.Error(err))
 		}
-		_, err = f.Write([]byte("test"))
+		_, err = tmpFile.Write([]byte("test"))
 		if err != nil {
-			f.Close()
-			os.Remove(tmpFile)
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
 			log.Logger.Fatal("failed to write to temp zone file",
-				zap.String("file", tmpFile), zap.Error(err))
+				zap.String("file", tmpFile.Name()), zap.Error(err))
 		}
-		f.Close()
-		os.Remove(tmpFile)
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
 	}
 
 	toRefresh := make([]string, 0)
@@ -176,15 +174,25 @@ func main() {
 			zap.Any("errors", bgpInfo.ParseErrors))
 	}
 
-	// Write zone files to same dir as destination, with temp extension
+	// Write zone files to same dir as destination, using os.CreateTemp for hidden temp files
 	var tmpZoneV4, tmpZoneV6 string
 	if zoneV4 != "" {
-		tmpZoneV4 = zoneV4 + zoneTmpExt
+		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV4), ".goasn_v4_*")
+		if err != nil {
+			log.Logger.Fatal("failed to create temp V4 zone file", zap.Error(err))
+		}
+		tmpZoneV4 = tmpFile.Name()
+		tmpFile.Close()
 	} else {
 		tmpZoneV4 = ""
 	}
 	if zoneV6 != "" {
-		tmpZoneV6 = zoneV6 + zoneTmpExt
+		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v4_*")
+		if err != nil {
+			log.Logger.Fatal("failed to create temp V6 zone file", zap.Error(err))
+		}
+		tmpZoneV6 = tmpFile.Name()
+		tmpFile.Close()
 	} else {
 		tmpZoneV6 = ""
 	}
@@ -222,7 +230,6 @@ func init() {
 	flag.StringVar(&zoneV4, "file-v4", "", "path to V4 zonefile")
 	flag.StringVar(&zoneV6, "file-v6", "", "path to V6 zonefile")
 	flag.StringVar(&cacheDir, "cache-dir", "", "directory for cache files")
-	flag.StringVar(&zoneTmpExt, "zone-tmp-ext", ".tmp", "temp extension for zone files, default to: .tmp")
 	flag.Parse()
 
 	err := log.SetupLogger(debug)
