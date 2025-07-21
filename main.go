@@ -1,6 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/rspamd/goasn/cachedir"
 	"github.com/rspamd/goasn/download"
 	"github.com/rspamd/goasn/iana"
@@ -20,20 +24,61 @@ const (
 )
 
 var (
-	debug       bool
-	downloadASN bool
-	downloadBGP bool
-	rejectFile  string
-	zoneV4      string
-	zoneV6      string
+	debug        bool
+	downloadASN  bool
+	downloadBGP  bool
+	onUpdateOnly bool
+	rejectFile   string
+	zoneV4       string
+	zoneV6       string
+	cacheDir     string
 )
 
 func main() {
+	var appCacheDir string
+	var err error
+	log.Logger.Info("goasn application started")
+	if cacheDir != "" {
+		// Create the directory if it doesn't exist
+		err = os.MkdirAll(cacheDir, 0o755)
+		if err != nil {
+			log.Logger.Fatal("failed to create cache directory",
+				zap.Error(err))
+		}
+		appCacheDir = cacheDir
+	} else {
+		appCacheDir, err = cachedir.MakeCacheDir(APP_NAME)
+		if err != nil {
+			log.Logger.Fatal("failed to create cache directory",
+				zap.Error(err))
+		}
+	}
 
-	appCacheDir, err := cachedir.MakeCacheDir(APP_NAME)
-	if err != nil {
-		log.Logger.Fatal("failed to create cache directory",
-			zap.Error(err))
+	// Ensure zone file directories exist and are writable
+	for _, zonePath := range []string{zoneV4, zoneV6} {
+		if zonePath == "" {
+			continue
+		}
+		dir := filepath.Dir(zonePath)
+		err := os.MkdirAll(dir, 0o755)
+		if err != nil {
+			log.Logger.Fatal("failed to create zone directory",
+				zap.String("dir", dir), zap.Error(err))
+		}
+		tmpFile, err := os.CreateTemp(dir, ".goasn_check_*")
+		if err != nil {
+			log.Logger.Fatal("failed to create temp zone file",
+				zap.String("file", tmpFile.Name()), zap.Error(err))
+		}
+		_, err = tmpFile.Write([]byte("test"))
+		if err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			log.Logger.Fatal("failed to write to temp zone file",
+				zap.String("file", tmpFile.Name()), zap.Error(err))
+		}
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
 	}
 
 	toRefresh := make([]string, 0)
@@ -44,10 +89,47 @@ func main() {
 		toRefresh = append(toRefresh, sources.BGP_LATEST)
 	}
 
-	if !download.RefreshSources(appCacheDir, toRefresh) {
-		log.Logger.Warn("some sources failed to download")
+	result := download.RefreshSources(appCacheDir, toRefresh)
+	if result.AnyError {
+		log.Logger.Warn("failed to download sources", zap.Int("error_count", result.ErrorCount))
+	} else if !result.AnyUpdated {
+		log.Logger.Info("all sources up to date")
 	}
 
+	if result.AnyUpdated {
+		log.Logger.Info("sources succesfully updated", zap.Int("updated_count", result.UpdatedCount))
+	}
+
+	if (zoneV4 != "" || zoneV6 != "") && onUpdateOnly && !result.AnyUpdated {
+		skip := true
+		for _, zonePath := range []string{zoneV4, zoneV6} {
+			if zonePath == "" {
+				continue
+			}
+			f, err := os.Open(zonePath)
+			if err != nil {
+				skip = false
+				break
+			}
+			buf := make([]byte, 4096)
+			n, _ := f.Read(buf)
+			f.Close()
+			content := string(buf[:n])
+			lines := strings.Split(content, "\n")
+			if len(lines) < 2 ||
+				!strings.HasPrefix(lines[0], "$SOA ") ||
+				!strings.HasPrefix(lines[1], "$NS ") {
+				skip = false
+				break
+			}
+		}
+		if skip {
+			log.Logger.Info("skipping zone file generation")
+			return
+		}
+	}
+
+	log.Logger.Info("starting zone file generation")
 	IRDataFiles := sources.MustBasenames(sources.GetRIRASN())
 	asnToIRInfo, err := ir.ReadIRData(appCacheDir, IRDataFiles)
 	if err != nil {
@@ -92,9 +174,50 @@ func main() {
 			zap.Any("errors", bgpInfo.ParseErrors))
 	}
 
-	err = zonefile.GenerateZones(asnToIRInfo, bgpInfo.V4, zoneV4, bgpInfo.V6, zoneV6)
+	// Write zone files to same dir as destination, using os.CreateTemp for hidden temp files
+	var tmpZoneV4, tmpZoneV6 string
+	if zoneV4 != "" {
+		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV4), ".goasn_v4_*")
+		if err != nil {
+			log.Logger.Fatal("failed to create temp V4 zone file", zap.Error(err))
+		}
+		tmpZoneV4 = tmpFile.Name()
+		tmpFile.Close()
+	} else {
+		tmpZoneV4 = ""
+	}
+	if zoneV6 != "" {
+		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v4_*")
+		if err != nil {
+			log.Logger.Fatal("failed to create temp V6 zone file", zap.Error(err))
+		}
+		tmpZoneV6 = tmpFile.Name()
+		tmpFile.Close()
+	} else {
+		tmpZoneV6 = ""
+	}
+
+	err = zonefile.GenerateZones(asnToIRInfo, bgpInfo.V4, tmpZoneV4, bgpInfo.V6, tmpZoneV6)
 	if err != nil {
 		log.Logger.Fatal("failed to generate zone", zap.Error(err))
+	}
+
+	// Atomically move files from temp to destination
+	if zoneV4 != "" {
+		err = os.Rename(tmpZoneV4, zoneV4)
+		if err != nil {
+			log.Logger.Fatal("failed to move V4 zone file", zap.Error(err))
+		} else {
+			log.Logger.Info("finished writing V4 zone file", zap.String("file", zoneV4))
+		}
+	}
+	if zoneV6 != "" {
+		err = os.Rename(tmpZoneV6, zoneV6)
+		if err != nil {
+			log.Logger.Fatal("failed to move V6 zone file", zap.Error(err))
+		} else {
+			log.Logger.Info("finished writing V6 zone file", zap.String("file", zoneV6))
+		}
 	}
 }
 
@@ -102,9 +225,11 @@ func init() {
 	flag.BoolVar(&debug, "debug", false, "enable debug logging")
 	flag.BoolVar(&downloadASN, "download-asn", false, "download RIR data")
 	flag.BoolVar(&downloadBGP, "download-bgp", false, "download MRT data")
+	flag.BoolVar(&onUpdateOnly, "on-update-only", false, "generate zones only if resources were updated")
 	flag.StringVar(&rejectFile, "reject", "", "path to write unparseable entries to")
 	flag.StringVar(&zoneV4, "file-v4", "", "path to V4 zonefile")
 	flag.StringVar(&zoneV6, "file-v6", "", "path to V6 zonefile")
+	flag.StringVar(&cacheDir, "cache-dir", "", "directory for cache files")
 	flag.Parse()
 
 	err := log.SetupLogger(debug)

@@ -58,12 +58,13 @@ func CheckUpdate(resourceURL string, fileModTime time.Time) (bool, error) {
 	return true, nil
 }
 
-func DownloadSource(ourDir string, resourceURL string) error {
+// DownloadSource returns (downloaded, error)
+func DownloadSource(ourDir string, resourceURL string) (bool, error) {
 	wantDownload := true
 
 	u, err := url.Parse(resourceURL)
 	if err != nil {
-		return fmt.Errorf("couldn't parse resource URL(%s): %v", resourceURL, err)
+		return false, fmt.Errorf("couldn't parse resource URL(%s): %v", resourceURL, err)
 	}
 	fName := path.Base(u.Path)
 
@@ -73,42 +74,42 @@ func DownloadSource(ourDir string, resourceURL string) error {
 		if os.IsNotExist(err) {
 			wantDownload = true
 		} else {
-			return fmt.Errorf("unexpected error stat'ing file(%s): %v", fPath, err)
+			return false, fmt.Errorf("unexpected error stat'ing file(%s): %v", fPath, err)
 		}
 	} else {
 		wantDownload, err = CheckUpdate(resourceURL, fi.ModTime())
 		if err != nil {
-			return fmt.Errorf("checking for update(%s) failed: %v", resourceURL, err)
+			return false, fmt.Errorf("checking for update(%s) failed: %v", resourceURL, err)
 		}
 	}
 
 	if !wantDownload {
-		return nil
+		return false, nil
 	}
 
 	log.Logger.Debug("downloading", zap.String("url", resourceURL))
 	req, err := http.NewRequest("GET", resourceURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to prepare GET request to %s: %v", resourceURL, err)
+		return false, fmt.Errorf("failed to prepare GET request to %s: %v", resourceURL, err)
 	}
 	res, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("GET request to %s failed: %v", resourceURL, err)
+		return false, fmt.Errorf("GET request to %s failed: %v", resourceURL, err)
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("GET request to %s returned bad status: %d", resourceURL, res.StatusCode)
+		return false, fmt.Errorf("GET request to %s returned bad status: %d", resourceURL, res.StatusCode)
 	}
 	defer res.Body.Close()
 
 	t, err := lastModFromHeaders(res.Header, resourceURL)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	swapPath := fPath + ".swp"
 	f, err := os.Create(swapPath)
 	if err != nil {
-		return fmt.Errorf("failed to create file(%s): %v", swapPath, err)
+		return false, fmt.Errorf("failed to create file(%s): %v", swapPath, err)
 	}
 
 	_, err = io.Copy(f, res.Body)
@@ -118,23 +119,23 @@ func DownloadSource(ourDir string, resourceURL string) error {
 		if closeError != nil {
 			closeError = fmt.Errorf("failed to close file(%s): %v", swapPath, closeError)
 		}
-		return errors.Join(closeError, fmt.Errorf("copy error: %v", err))
+		return false, errors.Join(closeError, fmt.Errorf("copy error: %v", err))
 	}
 
 	err = f.Close()
 	if err != nil {
-		return fmt.Errorf("close error: %v", err)
+		return false, fmt.Errorf("close error: %v", err)
 	}
 
 	err = os.Chtimes(swapPath, time.Time{}, t)
 	if err != nil {
-		return fmt.Errorf("chtimes error: %v", err)
+		return false, fmt.Errorf("chtimes error: %v", err)
 	}
 
 	err = os.Rename(swapPath, fPath)
 	if err != nil {
-		return fmt.Errorf("failed to rename %s to %s: %v", swapPath, fPath, err)
+		return false, fmt.Errorf("failed to rename %s to %s: %v", swapPath, fPath, err)
 	}
 	log.Logger.Debug("downloaded", zap.String("url", resourceURL))
-	return nil
+	return true, nil
 }

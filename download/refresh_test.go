@@ -31,9 +31,12 @@ func TestRefresh(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		ok := RefreshSources(tempDir, urlList)
-		if !ok {
-			t.Fatal("sources failed to refresh")
+		result := RefreshSources(tempDir, urlList)
+		if result.AnyError {
+			t.Fatal("sources failed to refresh: error occurred")
+		}
+		if !result.AnyUpdated {
+			t.Fatal("sources failed to refresh: no updates")
 		}
 	}
 
