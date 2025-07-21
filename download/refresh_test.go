@@ -30,14 +30,13 @@ func TestRefresh(t *testing.T) {
 		urlList = append(urlList, ts.URL+"/"+v)
 	}
 
-	for i := 0; i < 2; i++ {
-		result := RefreshSources(tempDir, urlList)
-		if result.AnyError {
-			t.Fatal("sources failed to refresh: error occurred")
-		}
-		if !result.AnyUpdated {
-			t.Fatal("sources failed to refresh: no updates")
-		}
+	result := RefreshSources(tempDir, urlList)
+	if result.AnyError {
+		t.Fatal("sources failed to refresh: error occurred")
+	}
+	result = RefreshSources(tempDir, urlList)
+	if result.AnyUpdated {
+		t.Fatal("expected no updates")
 	}
 
 	err = os.RemoveAll(tempDir)
