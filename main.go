@@ -2,8 +2,10 @@ package main
 
 import (
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/rspamd/goasn/cachedir"
 	"github.com/rspamd/goasn/download"
@@ -37,20 +39,35 @@ var (
 func main() {
 	var appCacheDir string
 	var err error
+	var exitCode int
+	var tmpZoneV4, tmpZoneV6 string
+	var tmpV4Created, tmpV6Created bool
+
+	defer func() {
+		if tmpV4Created {
+			os.Remove(tmpZoneV4)
+		}
+		if tmpV6Created {
+			os.Remove(tmpZoneV6)
+		}
+		os.Exit(exitCode)
+	}()
+
 	log.Logger.Info("goasn application started")
 	if cacheDir != "" {
-		// Create the directory if it doesn't exist
 		err = os.MkdirAll(cacheDir, 0o755)
 		if err != nil {
-			log.Logger.Fatal("failed to create cache directory",
-				zap.Error(err))
+			log.Logger.Error("failed to create cache directory", zap.Error(err))
+			exitCode = 1
+			return
 		}
 		appCacheDir = cacheDir
 	} else {
 		appCacheDir, err = cachedir.MakeCacheDir(APP_NAME)
 		if err != nil {
-			log.Logger.Fatal("failed to create cache directory",
-				zap.Error(err))
+			log.Logger.Error("failed to create cache directory", zap.Error(err))
+			exitCode = 1
+			return
 		}
 	}
 
@@ -62,19 +79,23 @@ func main() {
 		dir := filepath.Dir(zonePath)
 		err := os.MkdirAll(dir, 0o755)
 		if err != nil {
-			log.Logger.Fatal("failed to create zone directory",
-				zap.String("dir", dir), zap.Error(err))
+			log.Logger.Error("failed to create zone directory", zap.String("dir", dir), zap.Error(err))
+			exitCode = 1
+			return
 		}
 		tmpFile, err := os.CreateTemp(dir, ".goasn_check_*")
 		if err != nil {
-			log.Logger.Fatal("failed to create temp zone file", zap.Error(err))
+			log.Logger.Error("failed to create temp zone file", zap.Error(err))
+			exitCode = 1
+			return
 		}
 		_, err = tmpFile.Write([]byte("test"))
 		if err != nil {
 			tmpFile.Close()
 			os.Remove(tmpFile.Name())
-			log.Logger.Fatal("failed to write to temp zone file",
-				zap.String("file", tmpFile.Name()), zap.Error(err))
+			log.Logger.Error("failed to write to temp zone file", zap.String("file", tmpFile.Name()), zap.Error(err))
+			exitCode = 1
+			return
 		}
 		tmpFile.Close()
 		os.Remove(tmpFile.Name())
@@ -132,12 +153,16 @@ func main() {
 	IRDataFiles := sources.MustBasenames(sources.GetRIRASN())
 	asnToIRInfo, err := ir.ReadIRData(appCacheDir, IRDataFiles)
 	if err != nil {
-		log.Logger.Fatal("failed to read ASN info", zap.Error(err))
+		log.Logger.Error("failed to read ASN info", zap.Error(err))
+		exitCode = 1
+		return
 	}
 
 	ianaASN, err := iana.ReadIANAASN(appCacheDir)
 	if err != nil {
-		log.Logger.Fatal("failed to read IANA ASN info", zap.Error(err))
+		log.Logger.Error("failed to read IANA ASN info", zap.Error(err))
+		exitCode = 1
+		return
 	}
 
 	var reservedV4 *nradix.Tree
@@ -147,7 +172,9 @@ func main() {
 		var err error
 		reservedV4, err = iana.GetReservedIP4(appCacheDir)
 		if err != nil {
-			log.Logger.Fatal("failed to read IANA IP4 info", zap.Error(err))
+			log.Logger.Error("failed to read IANA IP4 info", zap.Error(err))
+			exitCode = 1
+			return
 		}
 	} else {
 		reservedV4 = nradix.NewTree(0)
@@ -157,7 +184,9 @@ func main() {
 		var err error
 		reservedV6, err = iana.GetReservedIP6(appCacheDir)
 		if err != nil {
-			log.Logger.Fatal("failed to read IANA IP6 info", zap.Error(err))
+			log.Logger.Error("failed to read IANA IP6 info", zap.Error(err))
+			exitCode = 1
+			return
 		}
 	} else {
 		reservedV6 = nradix.NewTree(0)
@@ -165,7 +194,9 @@ func main() {
 
 	bgpInfo := mrt.ASNFromBGP(appCacheDir, ianaASN, rejectFile, reservedV4, reservedV6)
 	if bgpInfo.Err != nil {
-		log.Logger.Fatal("failed to process MRT", zap.Error(bgpInfo.Err))
+		log.Logger.Error("failed to process MRT", zap.Error(bgpInfo.Err))
+		exitCode = 1
+		return
 	}
 	if bgpInfo.ParseErrorCount > 0 {
 		log.Logger.Error("MRT parsing errors occurred",
@@ -174,47 +205,70 @@ func main() {
 	}
 
 	// Write zone files to same dir as destination, using os.CreateTemp for hidden temp files
-	var tmpZoneV4, tmpZoneV6 string
 	if zoneV4 != "" {
 		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV4), ".goasn_v4_*")
 		if err != nil {
-			log.Logger.Fatal("failed to create temp V4 zone file", zap.Error(err))
+			log.Logger.Error("failed to create temp V4 zone file", zap.Error(err))
+			exitCode = 1
+			return
 		}
 		tmpZoneV4 = tmpFile.Name()
 		tmpFile.Close()
-	} else {
-		tmpZoneV4 = ""
+		tmpV4Created = true
 	}
 	if zoneV6 != "" {
-		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v4_*")
+		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v6_*")
 		if err != nil {
-			log.Logger.Fatal("failed to create temp V6 zone file", zap.Error(err))
+			log.Logger.Error("failed to create temp V6 zone file", zap.Error(err))
+			exitCode = 1
+			return
 		}
 		tmpZoneV6 = tmpFile.Name()
 		tmpFile.Close()
-	} else {
-		tmpZoneV6 = ""
+		tmpV6Created = true
 	}
+
+	// Signal handler for cleanup
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		if tmpV4Created {
+			os.Remove(tmpZoneV4)
+		}
+		if tmpV6Created {
+			os.Remove(tmpZoneV6)
+		}
+		os.Exit(1)
+	}()
 
 	err = zonefile.GenerateZones(asnToIRInfo, bgpInfo.V4, tmpZoneV4, bgpInfo.V6, tmpZoneV6)
 	if err != nil {
-		log.Logger.Fatal("failed to generate zone", zap.Error(err))
+		log.Logger.Error("failed to generate zone", zap.Error(err))
+		exitCode = 1
+		return
 	}
 
 	// Atomically move files from temp to destination
 	if zoneV4 != "" {
 		err = os.Rename(tmpZoneV4, zoneV4)
 		if err != nil {
-			log.Logger.Fatal("failed to move V4 zone file", zap.Error(err))
+			log.Logger.Error("failed to move V4 zone file", zap.Error(err))
+			exitCode = 1
+			return
 		} else {
+			tmpV4Created = false // cancel deferred removal
 			log.Logger.Info("finished writing V4 zone file", zap.String("file", zoneV4))
 		}
 	}
 	if zoneV6 != "" {
 		err = os.Rename(tmpZoneV6, zoneV6)
 		if err != nil {
-			log.Logger.Fatal("failed to move V6 zone file", zap.Error(err))
+			log.Logger.Error("failed to move V6 zone file", zap.Error(err))
+			exitCode = 1
+			return
 		} else {
+			tmpV6Created = false // cancel deferred removal
 			log.Logger.Info("finished writing V6 zone file", zap.String("file", zoneV6))
 		}
 	}
