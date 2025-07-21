@@ -2,8 +2,10 @@ package main
 
 import (
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/rspamd/goasn/cachedir"
 	"github.com/rspamd/goasn/download"
@@ -33,6 +35,14 @@ var (
 	zoneV6       string
 	cacheDir     string
 )
+
+func cleanupTempFiles(files ...string) {
+	for _, f := range files {
+		if f != "" {
+			os.Remove(f)
+		}
+	}
+}
 
 func main() {
 	var appCacheDir string
@@ -175,6 +185,7 @@ func main() {
 
 	// Write zone files to same dir as destination, using os.CreateTemp for hidden temp files
 	var tmpZoneV4, tmpZoneV6 string
+	var tmpV4Created, tmpV6Created bool
 	if zoneV4 != "" {
 		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV4), ".goasn_v4_*")
 		if err != nil {
@@ -182,19 +193,35 @@ func main() {
 		}
 		tmpZoneV4 = tmpFile.Name()
 		tmpFile.Close()
-	} else {
-		tmpZoneV4 = ""
+		tmpV4Created = true
 	}
 	if zoneV6 != "" {
-		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v4_*")
+		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v6_*")
 		if err != nil {
 			log.Logger.Fatal("failed to create temp V6 zone file", zap.Error(err))
 		}
 		tmpZoneV6 = tmpFile.Name()
 		tmpFile.Close()
-	} else {
-		tmpZoneV6 = ""
+		tmpV6Created = true
 	}
+
+	// Signal handler for cleanup
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		cleanupTempFiles(tmpZoneV4, tmpZoneV6)
+		os.Exit(1)
+	}()
+
+	defer func() {
+		if tmpV4Created {
+			os.Remove(tmpZoneV4)
+		}
+		if tmpV6Created {
+			os.Remove(tmpZoneV6)
+		}
+	}()
 
 	err = zonefile.GenerateZones(asnToIRInfo, bgpInfo.V4, tmpZoneV4, bgpInfo.V6, tmpZoneV6)
 	if err != nil {
@@ -207,6 +234,7 @@ func main() {
 		if err != nil {
 			log.Logger.Fatal("failed to move V4 zone file", zap.Error(err))
 		} else {
+			tmpV4Created = false // cancel deferred removal
 			log.Logger.Info("finished writing V4 zone file", zap.String("file", zoneV4))
 		}
 	}
@@ -215,6 +243,7 @@ func main() {
 		if err != nil {
 			log.Logger.Fatal("failed to move V6 zone file", zap.Error(err))
 		} else {
+			tmpV6Created = false // cancel deferred removal
 			log.Logger.Info("finished writing V6 zone file", zap.String("file", zoneV6))
 		}
 	}
