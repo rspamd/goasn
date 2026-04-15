@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/rspamd/goasn/cachedir"
+	"github.com/rspamd/goasn/caida"
 	"github.com/rspamd/goasn/download"
 	"github.com/rspamd/goasn/iana"
 	"github.com/rspamd/goasn/ir"
@@ -120,6 +121,22 @@ func main() {
 		log.Logger.Info("sources succesfully updated", zap.Int("updated_count", result.UpdatedCount))
 	}
 
+	// CAIDA pfx2as enrichment — the dated-filename dance doesn't fit
+	// RefreshSources' static URL list, so we run it separately.
+	if downloadBGP {
+		caidaResult := caida.Refresh(appCacheDir)
+		if caidaResult.ErrorCount > 0 {
+			log.Logger.Warn("failed to refresh CAIDA sources",
+				zap.Int("error_count", caidaResult.ErrorCount))
+		}
+		if caidaResult.AnyUpdated {
+			log.Logger.Info("CAIDA sources updated",
+				zap.Int("updated_count", caidaResult.UpdatedCount))
+			result.AnyUpdated = true
+			result.UpdatedCount += caidaResult.UpdatedCount
+		}
+	}
+
 	if (zoneV4 != "" || zoneV6 != "") && onUpdateOnly && !result.AnyUpdated {
 		skip := true
 		for _, zonePath := range []string{zoneV4, zoneV6} {
@@ -202,6 +219,34 @@ func main() {
 		log.Logger.Error("MRT parsing errors occurred",
 			zap.Int("count", bgpInfo.ParseErrorCount),
 			zap.Any("errors", bgpInfo.ParseErrors))
+	}
+
+	// Additively merge CAIDA pfx2as into the BGP view. Single-collector RIS
+	// feeds miss prefixes that don't propagate to rrc00; CAIDA aggregates
+	// multiple RouteViews collectors and fills those gaps. BGP entries win on
+	// conflict — they come from a real-time dump, CAIDA is a daily snapshot.
+	caidaData, err := caida.Load(appCacheDir, ianaASN, reservedV4, reservedV6)
+	if err != nil {
+		log.Logger.Warn("failed to load CAIDA pfx2as data", zap.Error(err))
+	} else {
+		addedV4, addedV6 := 0, 0
+		for p, asn := range caidaData.V4 {
+			if _, ok := bgpInfo.V4[p]; !ok {
+				bgpInfo.V4[p] = asn
+				addedV4++
+			}
+		}
+		for p, asn := range caidaData.V6 {
+			if _, ok := bgpInfo.V6[p]; !ok {
+				bgpInfo.V6[p] = asn
+				addedV6++
+			}
+		}
+		log.Logger.Info("merged CAIDA pfx2as enrichment",
+			zap.Int("v4_added", addedV4),
+			zap.Int("v6_added", addedV6),
+			zap.Int("v4_total", len(bgpInfo.V4)),
+			zap.Int("v6_total", len(bgpInfo.V6)))
 	}
 
 	// Write zone files to same dir as destination, using os.CreateTemp for hidden temp files
