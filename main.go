@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -36,6 +38,26 @@ var (
 	zoneV6       string
 	cacheDir     string
 )
+
+// createTempFile creates a temp file with explicit permissions (0666 before umask).
+// Unlike os.CreateTemp which uses 0600, this respects umask.
+func createTempFile(dir, prefix string) (f *os.File, err error) {
+	for i := 0; i < 10000; i++ {
+		randBytes := make([]byte, 4)
+		if _, err := rand.Read(randBytes); err != nil {
+			return nil, err
+		}
+		name := filepath.Join(dir, prefix+hex.EncodeToString(randBytes))
+		f, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+		if err == nil {
+			return f, nil
+		}
+		if !os.IsExist(err) {
+			return nil, err
+		}
+	}
+	return nil, os.ErrExist
+}
 
 func main() {
 	var appCacheDir string
@@ -84,7 +106,7 @@ func main() {
 			exitCode = 1
 			return
 		}
-		tmpFile, err := os.CreateTemp(dir, ".goasn_check_*")
+		tmpFile, err := createTempFile(dir, ".goasn_check_")
 		if err != nil {
 			log.Logger.Error("failed to create temp zone file", zap.Error(err))
 			exitCode = 1
@@ -249,9 +271,9 @@ func main() {
 			zap.Int("v6_total", len(bgpInfo.V6)))
 	}
 
-	// Write zone files to same dir as destination, using os.CreateTemp for hidden temp files
+	// Write zone files to same dir as destination, using createTempFile for hidden temp files
 	if zoneV4 != "" {
-		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV4), ".goasn_v4_*")
+		tmpFile, err := createTempFile(filepath.Dir(zoneV4), ".goasn_v4_")
 		if err != nil {
 			log.Logger.Error("failed to create temp V4 zone file", zap.Error(err))
 			exitCode = 1
@@ -262,7 +284,7 @@ func main() {
 		tmpV4Created = true
 	}
 	if zoneV6 != "" {
-		tmpFile, err := os.CreateTemp(filepath.Dir(zoneV6), ".goasn_v6_*")
+		tmpFile, err := createTempFile(filepath.Dir(zoneV6), ".goasn_v6_")
 		if err != nil {
 			log.Logger.Error("failed to create temp V6 zone file", zap.Error(err))
 			exitCode = 1
